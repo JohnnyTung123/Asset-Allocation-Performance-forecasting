@@ -1,141 +1,133 @@
-# Asset-Allocation-Performance-forecasting
+# Trust or Short? — Predicting Daily Asset Allocation Performance
 
-# Trust or Short? Predicting Asset Allocation Performance
+## Overview
 
-This project is a solution to the QRT systematic trading challenge: **Trust or Short? Predicting the Performance of Daily Asset Allocations**.
+This is a **binary classification** competition in systematic trading.
 
-The goal is to predict whether a given asset allocation will generate a **positive or negative next-day return**, using its recent historical behavior.
+Each day, multiple asset allocation strategies (portfolios) are rebalanced. Given a 20-day history of each strategy's behaviour, the goal is to predict whether it will make or lose money the **next day**.
 
----
+- Predict **1** → trust the allocation (go long)
+- Predict **0** → short the allocation (do the opposite)
 
-## 📌 Problem Overview
-
-Each sample represents an **asset allocation strategy** applied on a specific day.  
-We are given the past **20-day history** of:
-
-- Daily returns of the allocation
-- Signed volume exposure
-- Turnover behavior
-- Median turnover
-- Allocation group information
-
-### Objective
-
-Predict:
-
-- `1` → Allocation will have **positive next-day return** (Trust / Long)
-- `0` → Allocation will have **negative next-day return** (Short)
-
-Only **directional accuracy** is evaluated.
+Only the **direction** matters — not the magnitude of the return.
 
 ---
 
-## 📊 Evaluation Metric
+## The Core Question
 
-Accuracy of sign prediction:
+> "Looking at how a strategy behaved over the last 20 days — will it go up or down tomorrow?"
 
-\[
-\text{Accuracy} = \frac{1}{N} \sum_{i=1}^{N} \mathbb{1}[\text{sign}(\hat{r}_i) = \text{sign}(r_i)]
-\]
+---
+
+## Key Concepts
+
+### Allocation
+A trading strategy / recipe that assigns weights to a set of assets every day. Weights can be positive (long) or negative (short). All absolute weights sum to 1.
+
+### Group
+An anonymized category label for allocations built using similar logic. Allocations within the same group tend to behave similarly.
+
+### Turnover
+How much the strategy reshuffles its portfolio from one day to the next. Low turnover = stable positions. High turnover = completely different portfolio each day.
+
+### Signed Volume
+A weighted combination of market volumes, respecting the direction of each position. Positive signed volume means the strategy is riding heavily-traded long positions.
+
+---
+
+## Dataset Structure
+
+Each row = one **(date, allocation)** pair.
+
+| Column | Description |
+|--------|-------------|
+| `DATE` | Anonymized, shuffled timestamp |
+| `ALLOCATION` | Strategy identifier |
+| `RET_1` … `RET_20` | Daily returns over the last 20 days (most recent = RET_1) |
+| `SIGNED_VOLUME_1` … `SIGNED_VOLUME_20` | Signed volume over the last 20 days |
+| `MEDIAN_DAILY_TURNOVER` | Median turnover over the last 20 days |
+| `GROUP` | Anonymized allocation family |
+| `TARGET` | Next-day return (training only — you predict its sign) |
+
+### File Summary
+
+| File | Description |
+|------|-------------|
+| `X_train.csv` | Training features (527,073 rows) |
+| `y_train.csv` | Training targets |
+| `X_test.csv` | Test features (31,870 rows) |
+| `sample_submission.csv` | Correct submission format |
+| `benchmark_submission.ipynb` | Benchmark notebook |
+
+---
+
+## Evaluation Metric
+
+**Accuracy** — the fraction of rows where the predicted sign matches the true sign.
+
+```
+Accuracy = (number of correct sign predictions) / (total rows)
+```
 
 Where:
+- `sign(x) = 1` if x > 0, else `0`
+- Only the sign is evaluated — not the magnitude
 
-- \( \hat{r}_i \): predicted return
-- \( r_i \): true next-day return
+### Example
 
----
+| Row | True Return | Predicted Return | Correct? |
+|-----|-------------|-----------------|----------|
+| 1 | +0.5% | +0.3% | ✅ |
+| 2 | -0.2% | -0.1% | ✅ |
+| 3 | +0.1% | -0.4% | ❌ |
+| 4 | -0.3% | +0.2% | ❌ |
+| 5 | +0.8% | +0.1% | ✅ |
 
-## 📁 Dataset Description
-
-Each row corresponds to `(date, allocation)` and includes:
-
-### Time Series Features (20-day history)
-- `RET_1 ... RET_20` → past allocation returns
-- `SIGNED_VOLUME_1 ... SIGNED_VOLUME_20` → volume exposure proxy
-
-### Static / Aggregated Features
-- `MEDIAN_DAILY_TURNOVER`
-- `GROUP` (anonymized strategy cluster)
-
-### Target
-- `TARGET` → next-day return (used only for training)
+**Accuracy = 3/5 = 0.60**
 
 ---
 
-## ⚙️ Feature Engineering
+## Benchmark
 
-We enrich raw signals with statistical and time-series features:
+The provided benchmark uses **LightGBM** with engineered features including:
 
-### 1. Return-based features
-- Mean / std of returns over multiple windows (3, 5, 10, 20 days)
-- Momentum indicators
-- Trend consistency (sign stability)
+- Rolling average returns (multiple windows)
+- Cross-allocation average returns
+- Rolling volatility per allocation
+- Cross-allocation average volatility
 
-### 2. Volatility features
-- Rolling volatility of returns
-- Volatility of signed volume
-- Stability score of allocation performance
-
-### 3. Liquidity & turnover features
-- Average signed volume
-- Turnover level and changes
-- Turnover volatility (strategy instability proxy)
-
-### 4. Cross-sectional normalization features
-- Group-level z-scores
-- Relative performance vs group average allocation
+**Benchmark public leaderboard score: 0.5079** (barely above random)
 
 ---
 
-## 🧠 Models
+## Submission Format
 
-We use a **two-model ensemble**:
+Each row must contain a `ROW_ID` and a prediction of `1` (positive return) or `0` (negative return).
 
-### 1. LightGBM (Main Model)
-- Gradient boosting decision trees
-- Handles nonlinear interactions well
-- Robust to noisy financial signals
-
-### 2. Ridge Regression (Baseline)
-- Linear benchmark model
-- Helps stabilize predictions in noisy regimes
-
-### Final Prediction
-Weighted average / blending of:
-- `LightGBM probability`
-- `Ridge output`
+```
+ROW_ID,TARGET
+1,1
+2,0
+3,1
+...
+```
 
 ---
 
-## 🔄 Training Strategy
+## Modelling Notes
 
-- Time-agnostic shuffled dataset (no strict time continuity)
-- Cross-validation using grouped splits (by allocation or time proxy)
-- Early stopping for LightGBM
-- Regularization tuned to avoid overfitting
-
----
-
-## 📈 Benchmark
-
-The provided baseline uses:
-- Simple rolling features
-- Ridge + LightGBM ensemble
-
-Public leaderboard score:
-- **0.5079 accuracy**
-
-Our goal is to improve signal extraction beyond naive historical averaging.
+- Dates are **anonymized and shuffled** — no guaranteed continuity between DATE_0001 and DATE_0002
+- The signal is extremely noisy — even 51–52% accuracy is meaningful
+- Feature engineering is likely more impactful than model complexity
+- The `GROUP` column may warrant training separate models per group
+- Use **grouped cross-validation** to avoid leakage across allocations
 
 ---
 
-## 🚀 Key Insights
+## Suggested Feature Ideas
 
-- Allocation performance is **regime-dependent**
-- Signed volume contains predictive liquidity pressure signals
-- Turnover instability often precedes reversals
-- Cross-sectional normalization improves robustness
-
----
-
-## 📦 Repository Structure
+- Momentum: average of recent returns (are they trending up?)
+- Mean reversion: are returns reversing after a streak?
+- Volatility: standard deviation of the 20-day return window
+- Volume/return divergence: is price moving against volume?
+- Per-group statistics: normalise features within each GROUP
