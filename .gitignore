@@ -1,0 +1,12 @@
+# Data files
+data/*.csv
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
